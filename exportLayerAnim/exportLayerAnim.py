@@ -178,13 +178,35 @@ class ExportLayerAnim(Extension):
             # Export animated layers
             if len(animatedLayers) > 0:
                 haveAnimatedLayers = True
+                # Store last exported frame per layer
+                last_export = {}
                 for i in range(num_frames):
                     self.doc.setCurrentTime(i)
 
                     for layer in animatedLayers:
-                        if self.hasKeyframeAtTime(layer['node'], i):
-                            self.exportLayer(layer['node'], compo, "_" + str(layer['frame']).zfill(num_digits))
-                            layer['frame'] = layer['frame'] + 1
+                        node = layer['node']
+                        uid = node.uniqueId()
+
+                        # Check if the layer actually has pixel content at this frame
+                        pixel = node.pixelData(0, 0, self.doc.width(), self.doc.height())
+
+                        if pixel:
+                            # Real content → store it
+                            last_export[uid] = True
+                            self.exportLayer(node, compo, "_" + str(i).zfill(num_digits))
+
+                        else:
+                            # No content → hold last frame
+                            if uid in last_export:
+                                # Export held content but with current frame number
+                                self.exportLayer(node, compo, "_" + str(i).zfill(num_digits))
+                            else:
+                                # First frame is empty → export transparent
+                                was_visible = node.visible()
+                                node.setVisible(False)
+                                self.exportLayer(node, compo, "_" + str(i).zfill(num_digits))
+                                node.setVisible(was_visible)
+                                last_export[uid] = 0
 
         # Undo the setCurrentTime
         if haveAnimatedLayers and num_frames > 0:
