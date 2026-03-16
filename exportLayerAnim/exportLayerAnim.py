@@ -141,6 +141,16 @@ class ExportLayerAnim(Extension):
         self.useCompositions = False
         self.firstFrame = False
 
+    def isNodeEffectivelyVisible(self, node):
+        if not node.visible():
+            return False
+        parent = node.parentNode()
+        while parent:
+            if not parent.visible():
+                return False
+            parent = parent.parentNode()
+        return True
+
     def export(self):
         Application.setBatchmode(True)
         
@@ -162,6 +172,9 @@ class ExportLayerAnim(Extension):
                     and node.type() != "grouplayer"
                     and node.type() != "filelayer"
                     and node.type() != "vectorlayer"):
+                    continue
+                # Skip invisible layers (effective visibility)
+                if not self.isNodeEffectivelyVisible(node):
                     continue
                 if "NE" in node.name() or node.name() == "No Name":
                     continue
@@ -186,7 +199,7 @@ class ExportLayerAnim(Extension):
                     for layer in animatedLayers:
                         node = layer['node']
                         uid = node.uniqueId()
-
+                        
                         # Check if the layer actually has pixel content at this frame
                         pixel = node.pixelData(0, 0, self.doc.width(), self.doc.height())
 
