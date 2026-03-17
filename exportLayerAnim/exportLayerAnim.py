@@ -153,6 +153,7 @@ class ExportLayerAnim(Extension):
             parent = parent.parentNode()
         return True
 
+
     def export(self):
         Application.setBatchmode(True)
         
@@ -164,18 +165,31 @@ class ExportLayerAnim(Extension):
         self.exportPath = self.exportPath + "/" + self.exportDir
         self.mkdir(self.exportPath)
 
-        # Structure initiale du JSON
+        # Structure JSON conforme au format attendu par le script JSX TVPaint/AE
         json_output = {
-            "version": "1.0",
-            "project": {
-                "name": self.doc.name(),
-                "width": self.doc.width(),
-                "height": self.doc.height(),
-                "fps": fps,
-                "frame_count": num_frames
+            "version": {
+                "major": 6,
+                "minor": 0
             },
-            "layers": []
+            "project": {
+                "clip": {
+                    "name": self.doc.name(),
+                    "width": self.doc.width(),
+                    "height": self.doc.height(),
+                    "pixelaspectratio": 1.0,
+                    "framerate": float(fps),
+                    "image-count": num_frames,
+                    "bg": {
+                        "red": 255,
+                        "green": 255,
+                        "blue": 255
+                    },
+                    "layers": []
+                }
+            }
         }
+        
+        clip_layers = json_output["project"]["clip"]["layers"]
         
         haveAnimatedLayers = False
         for compo in self.composition():
@@ -196,67 +210,126 @@ class ExportLayerAnim(Extension):
                         topLevelLayers.append(c)
                 else:
                     if self.isLayerAnimated(node):
-                        # On prépare la structure de calque attendue par le script JSX
+                        # Trouver start/end réels du calque animé
+                        layer_start = self._findLayerStart(node, num_frames)
+                        #layer_end   = self._findLayerEnd(node, num_frames)
+
+                        # Couleur de groupe (label AE) — noir par défaut
                         new_layer_data = {
                             "name": node.name(),
-                            "visible": True,
-                            "opacity": 255,
-                            "instances": [] # C'est ici que le script AE lira le timing
+                            "visible": "true",
+                            "opacity": float(node.opacity()),  # 0–255
+                            "start": layer_start,
+                            "end": num_frames - 1,
+                            "blending-mode": "Color",   # mode normal par défaut
+                            "pre-behavior": 0,
+                            "post-behavior": 0,
+                            "group": {
+                                "red": 0,
+                                "green": 0,
+                                "blue": 0
+                            },
+                            "link": []
                         }
-                        json_output["layers"].append(new_layer_data)
+                        clip_layers.append(new_layer_data)
                         
-                        # 3. On l'ajoute à la liste de suivi pour la boucle de temps
                         animatedLayers.append({
                             'node': node,
                             'frame_count': 0,
-                            'last_file': "", 
-                            'instances_list': new_layer_data["instances"]
+                            'last_instance_index': -1,
+                            'link_list': new_layer_data["link"],
+                            'layer_start': layer_start,
+                            'layer_end': num_frames - 1
                         })
-                    else: 
+                    else:
                         self.exportLayer(node, compo)
 
-            # Export animated layers
+            # Export des calques animés
             if len(animatedLayers) > 0:
                 haveAnimatedLayers = True
+                
                 for i in range(num_frames):
                     self.doc.setCurrentTime(i)
 
                     for layer in animatedLayers:
-                        node_name = layer['node'].name()
+                        node = layer['node']
+                        node_name = node.name()
+                        link_list = layer['link_list']
                         
-                        # Détection d'une nouvelle image clé
-                        if self.hasKeyframeAtTime(layer['node'], i):
+                        # Nouvelle keyframe → on exporte l'image et on crée une entrée link
+                        if self.hasKeyframeAtTime(node, i):
                             suffix = "_" + str(layer['frame_count']).zfill(num_digits)
-                            self.exportLayer(layer['node'], compo, suffix)
+                            subdir = node_name
+                            self.exportLayer(node, compo, suffix, subdir=subdir)
                             
-                            layer['last_file'] = node_name + suffix + ".png"
+                            # Reconstruire le nom réel tel que exportLayer l'a généré
+                            prefix = compo
+                            sep = "_" if (self.namePrefix != "" or prefix != "") and node_name != "" else ""
+                            real_filename = f'{self.namePrefix}{prefix}{sep}{node_name}{suffix}.{self.extension}'
+                            file_relative = subdir + "/" + real_filename
+                            
+                            instance_name = node_name + suffix
+                            
+                            new_link_entry = {
+                                "instance-name": instance_name,
+                                "file": file_relative,
+                                "images": []       # liste des frames qui affichent cette image
+                            }
+                            link_list.append(new_link_entry)
+                            
                             layer['frame_count'] += 1
+                            layer['last_instance_index'] = len(link_list) - 1
 
-                        # On enregistre la frame (comble les vides avec last_file)
-                        # On utilise 'instances_ref' qui pointe vers le JSON
-                        layer['instances_list'].append({
-                            "frame": i,
-                            "link": layer['last_file']
-                        })
+                        # Associer cette frame à la dernière image exportée
+                        if layer['last_instance_index'] >= 0:
+                            link_list[layer['last_instance_index']]["images"].append(i)
+        
+        # Inverser l'ordre des calques avant écriture
+        json_output["project"]["clip"]["layers"] = list(reversed(clip_layers))
 
         # Écriture du fichier JSON
         json_file_path = os.path.join(self.exportPath, "import_ae.json")
         with open(json_file_path, 'w', encoding='utf-8') as f:
             json.dump(json_output, f, indent=4)
             
-        # Undo the setCurrentTime
+        # Undo du setCurrentTime
         if haveAnimatedLayers and num_frames > 0:
             Application.action('edit_undo').trigger()
             self.doc.save()
             
         Application.setBatchmode(False)
+
+
+    def _findLayerStart(self, node, num_frames):
+        """Retourne le premier frame où le calque a une keyframe."""
+        for i in range(num_frames):
+            if self.hasKeyframeAtTime(node, i):
+                return i
+        return 0
+
+    #def _findLayerEnd(self, node, num_frames):
+    #    """Retourne le dernier frame où le calque a une keyframe."""
+    #    last = 0
+    #    for i in range(num_frames):
+    #        if self.hasKeyframeAtTime(node, i):
+    #            last = i
+    #    return last
+
     
     # Create a file for the specified layer
-    def exportLayer(self, node, prefix = "", suffix = ""):
+    def exportLayer(self, node, prefix="", suffix="", subdir=""):
         self.doc.waitForDone()
         fileName = f'{self.namePrefix}{prefix}{"_" if (self.namePrefix != "" or prefix != "") and node.name() != "" else ""}{node.name()}{suffix}.{self.extension}'
         self.layersName += "\n" + fileName
-        path = self.exportPath + "/" + fileName
+
+        # Si un sous-dossier est demandé, on l'utilise
+        if subdir:
+            targetPath = self.exportPath + "/" + subdir
+            self.mkdir(targetPath)  # création si manquant
+        else:
+            targetPath = self.exportPath
+
+        path = targetPath + "/" + fileName
         bounds = QRect(0, 0, self.doc.width(), self.doc.height())
         if self.extension == "png":
             node.save(path, self.doc.resolution() / 72., self.doc.resolution() / 72., self.pngInfo, bounds)
