@@ -1,6 +1,8 @@
 from krita import *
 import os
+import json
 from . import exportLayerAnimDialog
+
 
 class ExportLayerAnim(Extension):
 
@@ -156,35 +158,60 @@ class ExportLayerAnim(Extension):
         
         num_frames = self.doc.animationLength()
         num_digits = len(str(num_frames))
+        fps = self.doc.framesPerSecond()
 
         # Create the folder if missing
         self.exportPath = self.exportPath + "/" + self.exportDir
         self.mkdir(self.exportPath)
 
+        # Structure initiale du JSON
+        json_output = {
+            "version": "1.0",
+            "project": {
+                "name": self.doc.name(),
+                "width": self.doc.width(),
+                "height": self.doc.height(),
+                "fps": fps,
+                "frame_count": num_frames
+            },
+            "layers": []
+        }
+        
         haveAnimatedLayers = False
         for compo in self.composition():
-            # Gets animated layers list and export others
             topLevelLayers = self.doc.topLevelNodes()
             animatedLayers = []
+            
             for node in topLevelLayers:
-                if (node.type() != "paintlayer"
-                    and node.type() != "clonelayer"
-                    and node.type() != "grouplayer"
-                    and node.type() != "filelayer"
-                    and node.type() != "vectorlayer"):
+                if (node.type() not in ["paintlayer", "clonelayer", "grouplayer", "filelayer", "vectorlayer"]):
                     continue
-                # Skip invisible layers (effective visibility)
                 if not self.isNodeEffectivelyVisible(node):
                     continue
                 if "NE" in node.name() or node.name() == "No Name":
                     continue
+                    
                 if node.type() == "grouplayer" and "EC" in node.name():
                     child = node.childNodes()
                     for c in child:
                         topLevelLayers.append(c)
                 else:
                     if self.isLayerAnimated(node):
-                        animatedLayers.append({'node': node, 'frame': 0})
+                        # On prépare la structure de calque attendue par le script JSX
+                        new_layer_data = {
+                            "name": node.name(),
+                            "visible": True,
+                            "opacity": 255,
+                            "instances": [] # C'est ici que le script AE lira le timing
+                        }
+                        json_output["layers"].append(new_layer_data)
+                        
+                        # 3. On l'ajoute à la liste de suivi pour la boucle de temps
+                        animatedLayers.append({
+                            'node': node,
+                            'frame_count': 0,
+                            'last_file': "", 
+                            'instances_list': new_layer_data["instances"]
+                        })
                     else: 
                         self.exportLayer(node, compo)
 
@@ -195,14 +222,33 @@ class ExportLayerAnim(Extension):
                     self.doc.setCurrentTime(i)
 
                     for layer in animatedLayers:
+                        node_name = layer['node'].name()
+                        
+                        # Détection d'une nouvelle image clé
                         if self.hasKeyframeAtTime(layer['node'], i):
-                            self.exportLayer(layer['node'], compo, "_" + str(layer['frame']).zfill(num_digits))
-                            layer['frame'] = layer['frame'] + 1
+                            suffix = "_" + str(layer['frame_count']).zfill(num_digits)
+                            self.exportLayer(layer['node'], compo, suffix)
+                            
+                            layer['last_file'] = node_name + suffix + ".png"
+                            layer['frame_count'] += 1
 
+                        # On enregistre la frame (comble les vides avec last_file)
+                        # On utilise 'instances_ref' qui pointe vers le JSON
+                        layer['instances_list'].append({
+                            "frame": i,
+                            "link": layer['last_file']
+                        })
+
+        # Écriture du fichier JSON
+        json_file_path = os.path.join(self.exportPath, "import_ae.json")
+        with open(json_file_path, 'w', encoding='utf-8') as f:
+            json.dump(json_output, f, indent=4)
+            
         # Undo the setCurrentTime
         if haveAnimatedLayers and num_frames > 0:
             Application.action('edit_undo').trigger()
             self.doc.save()
+            
         Application.setBatchmode(False)
     
     # Create a file for the specified layer
