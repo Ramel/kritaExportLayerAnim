@@ -245,8 +245,8 @@ class ExportLayerAnim(Extension):
 
                         # Récupérer la couleur du calque Krita
                         color_index = node.colorLabel()
-                        with open(self.exportPath + "/debug.log", "a") as log:
-                            log.write(f"color_index() pour '{node.name()}': {color_index} (type: {type(color_index)})\\n")
+                        #with open(self.exportPath + "/debug.log", "a") as log:
+                        #    log.write(f"color_index() pour '{node.name()}': {color_index} (type: {type(color_index)})\\n")
                         ae_label = KRITA_TO_AE_LABEL.get(color_index, 0)
                         r, g, b = AE_LABEL_COLORS[ae_label]
 
