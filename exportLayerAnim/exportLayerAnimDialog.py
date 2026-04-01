@@ -37,8 +37,8 @@ class ExportLayerAnimDialog(QDialog):
         self.helpLabel.setWordWrap(True)
         self.helpLabel.setTextFormat(Qt.RichText)
         self.helpLabel.setText(i18n("Add the followings to layer's name start:")
-            + "<br/>- <code>NE</code>: " + i18n("won't be exported")
-            + "<br/>- <code>EC</code>: " + i18n("export children")
+            + "<br/>- <code>NE_</code>: " + i18n("won't be exported")
+            + "<br/>- <code>EC_</code>: " + i18n("export children")
         )
 
         self.buttonBox.accepted.connect(self.accept)
