@@ -228,10 +228,10 @@ class ExportLayerAnim(Extension):
                     continue
                 if not self.isNodeEffectivelyVisible(node):
                     continue
-                if "NE" in node.name() or node.name() == "No Name":
+                if node.name().startswith("NE") or node.name() == "No Name":
                     continue
 
-                if node.type() == "grouplayer" and "EC" in node.name():
+                if node.type() == "grouplayer" and node.name().startswith("EC"):
                     child = node.childNodes()
                     for c in child:
                         topLevelLayers.append(c)

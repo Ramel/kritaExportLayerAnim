@@ -1,8 +1,8 @@
 from PyQt5.QtCore import (Qt)
 
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
-                             QLineEdit, QLabel, QComboBox, 
-                             QCheckBox, QFrame, 
+                             QLineEdit, QLabel, QComboBox,
+                             QCheckBox, QFrame,
                              QDialogButtonBox, QMessageBox)
 import os
 
@@ -25,7 +25,7 @@ class ExportLayerAnimDialog(QDialog):
         self.firstFrameBox = QCheckBox(i18n("First frame only"))
         self.buttonBox = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        
+
         self.exportDirLineEdit.textChanged.connect(self.updateLabels)
         self.namePrefixLineEdit.textChanged.connect(self.updateLabels)
         self.extensionComboBox.addItems(["png", "jpg"])
@@ -36,14 +36,14 @@ class ExportLayerAnimDialog(QDialog):
         self.firstFrameBox.stateChanged.connect(self.updateLabels)
         self.helpLabel.setWordWrap(True)
         self.helpLabel.setTextFormat(Qt.RichText)
-        self.helpLabel.setText(i18n("Add the followings to layer's name:")
+        self.helpLabel.setText(i18n("Add the followings to layer's name start:")
             + "<br/>- <code>NE</code>: " + i18n("won't be exported")
             + "<br/>- <code>EC</code>: " + i18n("export children")
         )
-                
+
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
-        
+
         self.formLayout.addWidget(QLabel(i18n("Directory:")))
         self.formLayout.addWidget(self.exportDirLineEdit)
         self.formLayout.addWidget(QLabel(i18n("Prefix:")))
@@ -65,7 +65,7 @@ class ExportLayerAnimDialog(QDialog):
         line.setFrameStyle(QFrame.HLine | QFrame.Sunken)
         self.mainLayout.addWidget(line)
         self.mainLayout.addWidget(self.buttonBox)
-        
+
         self.setWindowTitle(i18n("Export layers & anim"))
         self.resize(400, 100)
 
@@ -83,9 +83,9 @@ class ExportLayerAnimDialog(QDialog):
 
     def updateLabels(self):
         self.exampleLabel.setText(i18n("Files path example:") + " "
-            + self.exportLayerAnim.exportPath 
+            + self.exportLayerAnim.exportPath
             + ("/" + self.exportDirLineEdit.text() if self.exportDirLineEdit.text() != "" else "")
-            + "/" + self.namePrefixLineEdit.text() 
+            + "/" + self.namePrefixLineEdit.text()
             + "<i>" + (i18n("Composition") if self.useCompositionsBox.isChecked() else "")
             + ("_" if self.namePrefixLineEdit.text() != "" or self.useCompositionsBox.isChecked() else "") + (i18n("Layer_Frame") if not self.firstFrameBox.isChecked() else i18n("Layer"))
             + "</i>." + self.extensionComboBox.currentText())
